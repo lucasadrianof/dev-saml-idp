@@ -14,7 +14,23 @@ That's this.
 
 ## Quick Start
 
-### 1. Install and Run
+### Option 1: Docker (Recommended)
+
+```bash
+docker run -p 3000:3000 loomio/dev-saml-idp:latest
+```
+
+The IdP will be available at `http://localhost:3000`.
+
+With environment variables:
+```bash
+docker run -p 3000:3000 \
+  -e DEFAULT_NAME_ID=test@example.com \
+  -e DEFAULT_NAME="Test User" \
+  loomio/dev-saml-idp:latest
+```
+
+### Option 2: Local Development
 
 ```bash
 bundle install
@@ -23,7 +39,7 @@ rails server
 
 The IdP will be available at `http://localhost:3000`.
 
-### 2. Configure Your Application
+### Configure Your Application
 
 Point your SAML Service Provider (the app you're developing/testing) to these endpoints:
 
@@ -79,11 +95,28 @@ Optional environment variables:
 
 **CI/CD** - Spin it up in your test suite without external dependencies:
 ```bash
+# With Docker
+docker run -d -p 3001:3000 loomio/dev-saml-idp:latest
+# Run your integration tests
+
+# Or with Rails
 rails server -p 3001 -d
 # Run your integration tests
 ```
 
 **Offline work** - No internet required. No accounts, no API keys, no external services.
+
+**Docker Compose** - Run alongside your app:
+```yaml
+services:
+  saml-idp:
+    image: loomio/dev-saml-idp:latest
+    ports:
+      - "3000:3000"
+    environment:
+      DEFAULT_NAME_ID: user@example.com
+      DEFAULT_NAME: Test User
+```
 
 ## API Reference
 
