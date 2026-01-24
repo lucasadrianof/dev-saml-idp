@@ -2,7 +2,9 @@ FROM ruby:3.4.5-alpine
 
 RUN apk add --no-cache \
     build-base \
-    tzdata
+    tzdata \
+    yaml-dev
+
 
 WORKDIR /app
 
