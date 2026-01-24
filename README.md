@@ -106,18 +106,6 @@ rails server -p 3001 -d
 
 **Offline work** - No internet required. No accounts, no API keys, no external services.
 
-**Docker Compose** - Run alongside your app:
-```yaml
-services:
-  saml-idp:
-    image: loomio/dev-saml-idp:latest
-    ports:
-      - "3000:3000"
-    environment:
-      DEFAULT_NAME_ID: user@example.com
-      DEFAULT_NAME: Test User
-```
-
 ## API Reference
 
 ### Endpoints
