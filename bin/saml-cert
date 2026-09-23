@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    printf 'Usage: %s [--renew]\n\nGenerate a 365-day local SAML signing certificate.\n--renew backs up and replaces an existing certificate and private key.\n' "$0"
+}
+
+mode=init
+case "${1:-}" in
+    '') ;;
+    --renew) mode=renew ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+esac
+if (( $# > 1 )); then usage >&2; exit 2; fi
+command -v openssl >/dev/null || { printf 'OpenSSL is required.\n' >&2; exit 1; }
+
+repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+local_dir="$repo_dir/.saml-local"
+cert_dir="$local_dir/cert"
+backup_root="$local_dir/cert-backups"
+for path in "$local_dir" "$cert_dir" "$backup_root"; do
+    if [[ -L "$path" ]]; then
+        printf 'Refusing to write through a symlink: %s\n' "$path" >&2
+        exit 1
+    fi
+done
+umask 077
+mkdir -p "$local_dir"
+chmod 700 "$local_dir"
+lock_dir="$local_dir/.cert-lock"
+if ! mkdir "$lock_dir" 2>/dev/null; then
+    printf 'Certificate operation already locked: %s\n' "$lock_dir" >&2
+    exit 1
+fi
+
+stage=''
+backup=''
+moved_old=false
+cleanup() {
+    status=$?
+    trap - EXIT
+    if [[ "$moved_old" == true && ! -e "$cert_dir" && -d "$backup/cert" ]]; then
+        if ! mv -- "$backup/cert" "$cert_dir"; then
+            printf 'Restore the previous pair manually from %s/cert\n' "$backup" >&2
+            status=1
+        fi
+    fi
+    if [[ -n "$stage" && -d "$stage" ]]; then rm -rf -- "$stage"; fi
+    rmdir "$lock_dir"
+    exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if [[ "$mode" == init ]]; then
+    if [[ -e "$cert_dir/server.pem" || -e "$cert_dir/server.crt" ]]; then
+        printf 'A signing key or certificate already exists. Use --renew to back it up and replace it.\n' >&2
+        exit 1
+    fi
+else
+    if [[ ! -f "$cert_dir/server.pem" || ! -f "$cert_dir/server.crt" || -L "$cert_dir/server.pem" || -L "$cert_dir/server.crt" ]]; then
+        printf 'Renewal requires an existing regular server.pem and server.crt pair.\n' >&2
+        exit 1
+    fi
+fi
+
+# Finish generation and verification before touching the installed pair.
+stage=$(mktemp -d "$local_dir/.cert-new.XXXXXX")
+if ! openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 365 \
+    -subj '/CN=Local SAML Test IdP' \
+    -keyout "$stage/server.pem" -out "$stage/server.crt" 2>"$stage/openssl.log"; then
+    cat "$stage/openssl.log" >&2
+    exit 1
+fi
+rm -- "$stage/openssl.log"
+openssl pkey -in "$stage/server.pem" -check -noout >/dev/null
+openssl x509 -in "$stage/server.crt" -checkend 86400 -noout >/dev/null
+key_public=$(openssl pkey -in "$stage/server.pem" -pubout -outform DER | openssl dgst -sha256)
+cert_public=$(openssl x509 -in "$stage/server.crt" -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256)
+if [[ "$key_public" != "$cert_public" ]]; then
+    printf 'Generated certificate does not match its private key.\n' >&2
+    exit 1
+fi
+
+# Private host directories protect these files; Apache reads individual read-only mounts.
+chmod 700 "$stage"
+chmod 644 "$stage/server.pem" "$stage/server.crt"
+if [[ "$mode" == renew ]]; then
+    mkdir -p "$backup_root"
+    chmod 700 "$backup_root" "$cert_dir"
+    backup=$(mktemp -d "$backup_root/$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX")
+    moved_old=true
+    mv -- "$cert_dir" "$backup/cert"
+elif [[ -d "$cert_dir" ]]; then
+    # Only remove an empty directory left by an unfinished first-time setup.
+    rmdir "$cert_dir"
+fi
+mv -- "$stage" "$cert_dir"
+stage=''
+printf 'Installed signing certificate in %s\n' "$cert_dir"
+openssl x509 -in "$cert_dir/server.crt" -noout -dates -fingerprint -sha256
+if [[ "$mode" == renew ]]; then
+    printf '\nPrevious pair: %s/cert\n' "$backup"
+    printf 'Next: docker compose up -d --force-recreate idp\n'
+    printf 'Then re-import the SAML 2.0 metadata into your SP and start a fresh login.\n'
+else
+    printf '\nNext: docker compose up -d\n'
+    printf 'Then import the SAML 2.0 metadata into your SP.\n'
+fi

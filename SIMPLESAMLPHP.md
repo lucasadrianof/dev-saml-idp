@@ -6,7 +6,7 @@ The Docker image is pinned to the version used to verify this setup.
 
 ## First-time setup
 
-Run these commands from the repository root. Docker Compose and OpenSSL are required.
+Run these commands from the repository root. Docker Compose, Bash, and OpenSSL are required.
 
 1. Create your local settings and test users:
 
@@ -24,24 +24,16 @@ Run these commands from the repository root. Docker Compose and OpenSSL are requ
    The email must match the user your application expects. Both files are ignored
    by Git; the committed example contains dummy credentials only.
 
-2. Generate a signing certificate and private key. Run this only on first setup;
-   replacing an existing key requires updating the metadata in your SP:
+2. Generate the initial signing certificate and private key:
 
    ```sh
-   mkdir -p .saml-local/cert
-   chmod 700 .saml-local .saml-local/cert
-   test ! -e .saml-local/cert/server.pem &&
-   test ! -e .saml-local/cert/server.crt &&
-   openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 365 \
-     -subj '/CN=Local SAML Test IdP' \
-     -keyout .saml-local/cert/server.pem \
-     -out .saml-local/cert/server.crt
-   chmod 644 .saml-local/cert/server.pem .saml-local/cert/server.crt
+   bash bin/saml-cert
    ```
 
-   The host directories are private. Individual read-only file mounts let Apache
-   read the certificate and key inside the container. `.saml-local/`, including
-   keys and any rollback copies, is ignored by Git.
+   This generates and verifies a new RSA-3072 key and a certificate valid for 365
+   days. It refuses to overwrite an existing key or certificate. The host
+   directories are private; individual read-only file mounts allow Apache to
+   read the files. `.saml-local/`, including keys and backups, is ignored by Git.
 
 3. Start the IdP:
 
@@ -94,5 +86,45 @@ The signing certificate lasts 365 days. Inspect its dates with:
 ```sh
 openssl x509 -in .saml-local/cert/server.crt -noout -dates
 ```
+
+## Renewing the signing certificate
+
+Run the following from the repository root when the certificate expires or you
+want to replace the signing key:
+
+```sh
+bash bin/saml-cert --renew
+docker compose up -d --force-recreate idp
+```
+
+The script validates the replacement pair before touching the installed files.
+It moves the previous pair into a unique directory under
+`.saml-local/cert-backups/`, prints that location, and installs the new pair.
+Generation failures leave the old pair untouched; an installation failure
+restores it. Concurrent certificate operations are rejected with a lock.
+
+Force-recreate the container after success: Docker's individual file bind mounts
+can still reference the old files after replacement. A plain restart may continue
+serving the old signing certificate.
+
+Download the SAML 2.0 metadata again and replace the SP's imported metadata. Verify
+that its signing certificate matches the new certificate, then initiate a fresh
+login from the SP. The old imported certificate will not validate new signatures.
+
+To roll back a completed renewal, use the exact backup directory printed by the
+script. Stop the IdP, preserve the current pair, restore the backed-up `cert`
+directory to `.saml-local/cert`, and force-recreate the container. Import matching
+metadata in the SP if its trusted certificate was already updated.
+
+## Checking certificate management changes
+
+```sh
+bash tests/saml-cert.sh
+```
+
+This test generates disposable certificates in a temporary directory. It checks
+initial generation, refusal to overwrite, new key generation during renewal,
+exact backups, failure recovery, and the concurrency guard. It never changes the
+active developer certificate.
 
 Use this setup for development and testing only.
