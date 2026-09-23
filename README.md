@@ -2,6 +2,13 @@
 
 A SAML Identity Provider for local development. Lets you test SAML authentication without setting up Okta, Auth0, or Azure AD.
 
+## SimpleSAMLphp alternative
+
+This fork also includes a separate Docker Compose setup using SimpleSAMLphp, with
+an HTTPS issuer behind a tunnel, an emailAddress NameID, and locally generated
+signing keys. Follow [the SimpleSAMLphp setup guide](SIMPLESAMLPHP.md).
+The Rails application and its setup instructions below remain available.
+
 ## Why
 
 When you're building or testing SAML integration, you need an IdP that:

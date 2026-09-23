@@ -9,6 +9,7 @@
 
 # Ignore all environment files.
 /.env*
+!/.env.example
 
 # Ignore all logfiles and tempfiles.
 /log/*
@@ -32,3 +33,10 @@
 
 # Ignore master key for decrypting credentials and more.
 /config/master.key
+
+# Local SAML signing keys and rollback data
+/.saml-local/
+
+# Local test credentials and generated metadata
+/authsources.php
+/idp-metadata.xml

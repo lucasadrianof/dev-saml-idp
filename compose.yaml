@@ -1,0 +1,18 @@
+name: local-saml
+
+services:
+  idp:
+    image: kenchan0130/simplesamlphp@sha256:3c6ed4b8c6bdc86bb131c802ddc35f6311cb91df7f8412f50b8f159c4c19fab0
+    container_name: test-saml-idp
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SIMPLESAMLPHP_IDP_BASE_URL: "${SIMPLESAMLPHP_IDP_BASE_URL:?Set SIMPLESAMLPHP_IDP_BASE_URL in .env}"
+      SIMPLESAMLPHP_SP_ENTITY_ID: "${SIMPLESAMLPHP_SP_ENTITY_ID:?Set SIMPLESAMLPHP_SP_ENTITY_ID in .env}"
+      SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE: "${SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE:?Set SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE in .env}"
+    volumes:
+      - ./authsources.php:/var/www/simplesamlphp/config/authsources.php:ro
+      - ./saml20-sp-remote.php:/var/www/simplesamlphp/metadata/saml20-sp-remote.php:ro
+      - ./saml20-idp-hosted.php:/var/www/simplesamlphp/metadata/saml20-idp-hosted.php:ro
+      - ./.saml-local/cert/server.crt:/var/www/simplesamlphp/cert/server.crt:ro
+      - ./.saml-local/cert/server.pem:/var/www/simplesamlphp/cert/server.pem:ro
